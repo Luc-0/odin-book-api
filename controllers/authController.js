@@ -1,5 +1,6 @@
 const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const User = require('../models/user');
 
@@ -72,3 +73,50 @@ exports.signUp = [
     });
   }
 ]
+
+exports.login = [
+  ...formValidationMiddlewares,
+  function (req, res, next) {
+    const formInput = {
+      username: req.body.username,
+      password: req.body.password,
+    }
+
+    User.findOne({ username: formInput.username }, (err, user) => {
+      if (err) {
+        return next(err);
+      }
+
+      if (!user) {
+        return res.status(400).json({
+          msg: 'Invalid credentials'
+        });
+      }
+
+      bcrypt.compare(formInput.password, user.password, (err, match) => {
+        if (err) {
+          return next(err);
+        }
+
+        if (!match) {
+          return res.status(400).json({
+            msg: 'Invalid credentials'
+          });
+        }
+        
+        jwt.sign({ user } , process.env.SECRET_JWT, { expiresIn: '8h'}, (err, token) => {
+          if (err) {
+            return next(err);
+          }
+
+          const { password, ...userWithoutPassword } = user._doc;
+
+          return res.status(200).json({
+            user: userWithoutPassword,
+            token,
+          });
+        })
+      })
+    })
+  }
+];
