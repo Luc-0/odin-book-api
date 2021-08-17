@@ -5,8 +5,16 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 
 const formValidationMiddlewares = [
-  body('username').trim().escape().isLength({min: 3, max: 50}).withMessage('Username length needs to be in the range of 3-50 characters'),
-  body('password').trim().escape().isLength({min: 6}).withMessage('Password length needs to be >= 6'),
+  body('username')
+    .trim()
+    .escape()
+    .isLength({ min: 3, max: 50 })
+    .withMessage('Username length needs to be in the range of 3-50 characters'),
+  body('password')
+    .trim()
+    .escape()
+    .isLength({ min: 6 })
+    .withMessage('Password length needs to be >= 6'),
   function (req, res, next) {
     const errorResult = validationResult(req);
     const hasError = !errorResult.isEmpty();
@@ -19,21 +27,24 @@ const formValidationMiddlewares = [
     }
 
     next();
-  }
-]
+  },
+];
 
 exports.signUp = [
-  body('name').trim().escape().isLength({min: 3, max: 50}).withMessage('Name length needs to be in the range of 3-50 characters'),
+  body('name')
+    .trim()
+    .escape()
+    .isLength({ min: 3, max: 50 })
+    .withMessage('Name length needs to be in the range of 3-50 characters'),
   ...formValidationMiddlewares,
   (req, res, next) => {
     const formInput = {
       username: req.body.username,
       password: req.body.password,
       name: req.body.name,
-    }
+    };
 
-    User.findOne({username: formInput.username}, (err, user) => {
-
+    User.findOne({ username: formInput.username }, (err, user) => {
       if (err) {
         return next(err);
       }
@@ -45,7 +56,7 @@ exports.signUp = [
             username: formInput.username,
           },
         });
-      } 
+      }
 
       bcrypt.hash(formInput.password, 10, (hashErr, hashedPassword) => {
         if (hashErr) {
@@ -59,7 +70,7 @@ exports.signUp = [
 
         newUser.save((saveErr, newUser) => {
           if (saveErr) {
-            return next(saveErr);            
+            return next(saveErr);
           }
 
           const { password, ...userWithoutPassword } = newUser._doc;
@@ -67,12 +78,12 @@ exports.signUp = [
           return res.status(200).json({
             msg: 'User created',
             user: userWithoutPassword,
-          })
+          });
         });
-      })
+      });
     });
-  }
-]
+  },
+];
 
 exports.login = [
   ...formValidationMiddlewares,
@@ -80,7 +91,7 @@ exports.login = [
     const formInput = {
       username: req.body.username,
       password: req.body.password,
-    }
+    };
 
     User.findOne({ username: formInput.username }, (err, user) => {
       if (err) {
@@ -89,7 +100,7 @@ exports.login = [
 
       if (!user) {
         return res.status(400).json({
-          msg: 'Invalid credentials'
+          msg: 'Invalid credentials',
         });
       }
 
@@ -100,23 +111,27 @@ exports.login = [
 
         if (!match) {
           return res.status(400).json({
-            msg: 'Invalid credentials'
+            msg: 'Invalid credentials',
           });
         }
-        
-        jwt.sign({ user } , process.env.SECRET_JWT, { expiresIn: '8h'}, (err, token) => {
-          if (err) {
-            return next(err);
+        const { password, ...userWithoutPassword } = user._doc;
+
+        jwt.sign(
+          { user: userWithoutPassword },
+          process.env.SECRET_JWT,
+          { expiresIn: '8h' },
+          (err, token) => {
+            if (err) {
+              return next(err);
+            }
+
+            return res.status(200).json({
+              user: userWithoutPassword,
+              token,
+            });
           }
-
-          const { password, ...userWithoutPassword } = user._doc;
-
-          return res.status(200).json({
-            user: userWithoutPassword,
-            token,
-          });
-        })
-      })
-    })
-  }
+        );
+      });
+    });
+  },
 ];
