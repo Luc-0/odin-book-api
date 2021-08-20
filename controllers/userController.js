@@ -1,6 +1,71 @@
 const { isValidObjectId } = require('mongoose');
 const User = require('../models/user');
-const middlewares = require('../middlewares');
+const { verifyToken, checkIdFormat } = require('../middlewares');
+
+exports.getUserFriends = [
+  verifyToken,
+  checkIdFormat('userId'),
+  (req, res, next) => {
+    const userId = req.params.userId;
+
+    User.findOne({ _id: userId })
+      .populate({
+        path: 'friend.list',
+        select: '-friend -password',
+        options: { lean: true },
+      })
+      .select('friend.list')
+      .lean()
+      .exec((err, result) => {
+        if (err) {
+          return next(err);
+        }
+
+        res.json({
+          friends: result.friend.list,
+        });
+      });
+  },
+];
+
+exports.getRequestList = [
+  verifyToken,
+  checkIdFormat('userId'),
+  (req, res, next) => {
+    const userId = req.params.userId;
+
+    User.findOne({ _id: userId }, '-password', (err, user) => {
+      if (err) {
+        return next(err);
+      }
+
+      if (!user) {
+        return res.status(400).json({ msg: 'User does not exists.' });
+      }
+
+      const notIn = [userId, ...user.friend.list, ...user.friend.requests];
+
+      User.find(
+        {
+          _id: {
+            $nin: notIn,
+          },
+        },
+        '-friend -password',
+        { lean: true },
+        (err, users) => {
+          if (err) {
+            return next(err);
+          }
+
+          res.json({
+            users,
+          });
+        }
+      );
+    });
+  },
+];
 
 exports.addFriendRequest = [userIdManager('friend.requests', '$addToSet')];
 exports.removeFriendRequest = [userIdManager('friend.requests', '$pull')];
@@ -10,8 +75,8 @@ exports.removeFriend = [userIdManager('friend.list', '$pull')];
 
 function userIdManager(arrField, dbOperation) {
   return [
-    middlewares.verifyToken,
-    middlewares.checkIdFormat('userId'),
+    verifyToken,
+    checkIdFormat('userId'),
     (req, res, next) => {
       const toUserId = req.params.userId;
       const id = req.body.id;
