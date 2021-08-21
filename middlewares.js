@@ -28,6 +28,7 @@ exports.verifyToken = function (req, res, next) {
     }
 
     req.token = token;
+    req.user = result.user;
     next();
   });
 };
