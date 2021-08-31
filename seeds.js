@@ -9,9 +9,11 @@ db.on('error', console.error.bind(console, 'MongoDB connection error'));
 
 const User = require('./models/user');
 const Post = require('./models/post');
+const Comment = require('./models/comment');
 
 // addUsers(30);
 // addPost(10, 5);
+// addComment(10, 5, 3);
 
 async function addUsers(num) {
   for (let i = 0; i < num; i++) {
@@ -53,5 +55,49 @@ function addPost(userQty, postQty) {
           console.log('New post:', newPost);
         }
       }
+    });
+}
+
+function addComment(userQty, postQty, commentQty) {
+  User.find()
+    .limit(userQty)
+    .exec((err, users) => {
+      if (err) {
+        throw err;
+      }
+
+      Post.find()
+        .limit(postQty)
+        .exec((err, posts) => {
+          // Post
+          for (let postCounter = 0; postCounter < postQty; postCounter++) {
+            // User
+            for (let userCounter = 0; userCounter < userQty; userCounter++) {
+              // Comment
+              for (
+                let commentCounter = 0;
+                commentCounter < commentQty;
+                commentCounter++
+              ) {
+                const post = posts[postCounter];
+                const user = users[userCounter];
+                const randomText = faker.lorem.sentence(
+                  Math.floor(Math.random() * 3 + 1)
+                );
+
+                new Comment({
+                  user: user._id,
+                  post: post._id,
+                  text: randomText,
+                }).save((err, newComment) => {
+                  if (err) {
+                    throw err;
+                  }
+                  console.log('New comment: ', newComment);
+                });
+              }
+            }
+          }
+        });
     });
 }
