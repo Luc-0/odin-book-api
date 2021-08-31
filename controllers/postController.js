@@ -126,3 +126,43 @@ exports.updatePost = [
     });
   },
 ];
+
+// Likes
+
+exports.addLike = postLike(true);
+
+exports.removeLike = postLike(false);
+
+function postLike(addLike = true) {
+  return [
+    verifyToken,
+    checkIdFormat('postId'),
+    (req, res, next) => {
+      const likeId = req.user._id;
+      const { postId } = req.params;
+      const operation = addLike ? '$addToSet' : '$pull';
+
+      const update = {
+        [operation]: {
+          likes: likeId,
+        },
+      };
+
+      Post.findByIdAndUpdate(
+        postId,
+        update,
+        { select: 'likes', new: true },
+        (err, updatedPostLikes) => {
+          if (err) {
+            return next(err);
+          }
+
+          console.log(updatedPostLikes);
+          res.json({
+            post: updatedPostLikes,
+          });
+        }
+      );
+    },
+  ];
+}
