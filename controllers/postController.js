@@ -1,8 +1,10 @@
 const Post = require('../models/post');
 const User = require('../models/user');
+const Comment = require('../models/comment');
 
 const { body, validationResult } = require('express-validator');
 const { verifyToken, checkIdFormat } = require('../middlewares');
+const async = require('async');
 
 const postFormValidation = [
   body('text')
@@ -39,7 +41,7 @@ exports.createPost = [
 
       if (!result) {
         return res.status(500).json({
-          msg: 'User does not exists',
+          msg: 'User does not exist',
           userId,
         });
       }
@@ -98,7 +100,7 @@ exports.updatePost = [
 
       if (!result) {
         return res.status(400).json({
-          msg: 'Post does not exists',
+          msg: 'Post does not exist',
         });
       }
 
@@ -163,6 +165,205 @@ function postLike(addLike = true) {
           });
         }
       );
+    },
+  ];
+}
+
+// Comments
+
+exports.getComments = [
+  verifyToken,
+  ...postCheck(),
+  (req, res, next) => {
+    const { postId } = req.params;
+    const limit = +req.body.limit || 30;
+
+    Comment.find({ post: postId })
+      .limit(limit)
+      .exec((err, comments) => {
+        if (err) {
+          return next(err);
+        }
+
+        res.json(comments);
+      });
+  },
+];
+
+exports.createComment = [
+  ...postCommentValidation(),
+  (req, res, next) => {
+    const postId = req.params.postId;
+    const userId = req.user._id;
+    const commentText = req.body.text;
+
+    new Comment({
+      post: postId,
+      user: userId,
+      text: commentText,
+    }).save((err, newComment) => {
+      if (err) {
+        return next(err);
+      }
+
+      res.json(newComment);
+    });
+  },
+];
+
+function postCommentValidation() {
+  return [
+    verifyToken,
+    ...postCheck(),
+    body('text')
+      .trim()
+      .escape()
+      .isLength({ min: 3, max: 300 })
+      .withMessage('Text length must be in the range of 3-50 characters'),
+    function (req, res, next) {
+      const errorResult = validationResult(req);
+      const hasError = !errorResult.isEmpty();
+
+      if (hasError) {
+        return res.status(400).json({
+          msg: 'Invalid form input',
+          errors: errorResult.errors,
+        });
+      }
+      next();
+    },
+  ];
+}
+
+exports.updateComment = [
+  ...postCommentValidation(),
+  checkIdFormat('commentId'),
+  (req, res, next) => {
+    const commentId = req.params.commentId;
+
+    Comment.findById(commentId)
+      .select('user -_id')
+      .lean()
+      .exec((err, comment) => {
+        if (err) {
+          return next(err);
+        }
+
+        if (!comment) {
+          return res.status(400).json({
+            msg: 'Comment does not exist',
+            commentId,
+          });
+        }
+
+        const authUserId = req.user._id.toString();
+        const commentUserId = comment.user.toString();
+
+        if (authUserId !== commentUserId) {
+          return res.status(403).json({
+            msg: 'User does not have permission to update comment',
+          });
+        }
+
+        const update = { text: req.body.text };
+
+        Comment.findByIdAndUpdate(
+          commentId,
+          update,
+          { new: true },
+          (err, updatedComment) => {
+            if (err) {
+              return next(err);
+            }
+
+            if (!updatedComment) {
+              return res.status(400).json({
+                msg: 'Comment does not exist',
+                commentId,
+              });
+            }
+
+            res.json(updatedComment);
+          }
+        );
+      });
+  },
+];
+
+exports.deleteComment = [
+  verifyToken,
+  ...postCheck(),
+  (req, res, next) => {
+    const { postId, commentId } = req.params;
+    const authUserId = req.user._id;
+
+    async.parallel(
+      {
+        comment: function (cb) {
+          Comment.findById(commentId).select('user -_id').lean().exec(cb);
+        },
+        post: function (cb) {
+          Post.findById(postId).select('user -_id').lean().exec(cb);
+        },
+      },
+      function (err, results) {
+        if (err) {
+          return next(err);
+        }
+
+        const { comment, post } = results;
+
+        if (!comment) {
+          return res.status(400).json({
+            msg: 'Comment does not exist',
+            commentId,
+          });
+        }
+
+        const commentUserId = comment.user;
+        const postUserId = post.user;
+
+        if (
+          authUserId.toString() !== commentUserId.toString() &&
+          authUserId.toString() !== postUserId.toString()
+        ) {
+          return res.status(403).json({
+            msg: 'User does not have permission to delete comment',
+          });
+        }
+
+        Comment.findByIdAndDelete(commentId, (err, deletedComment) => {
+          if (err) {
+            return next(err);
+          }
+
+          res.json(deletedComment);
+        });
+      }
+    );
+  },
+];
+
+function postCheck() {
+  return [
+    checkIdFormat('postId'),
+    (req, res, next) => {
+      const postId = req.params.postId;
+
+      Post.exists({ _id: postId }, (err, result) => {
+        if (err) {
+          return next(err);
+        }
+
+        if (!result) {
+          return res.status(400).json({
+            msg: 'Post does not exist',
+            postId: postId,
+          });
+        }
+
+        next();
+      });
     },
   ];
 }
