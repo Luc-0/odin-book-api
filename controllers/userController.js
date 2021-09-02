@@ -1,6 +1,48 @@
 const { isValidObjectId } = require('mongoose');
 const User = require('../models/user');
+const Post = require('../models/post');
+
 const { verifyToken, checkIdFormat } = require('../middlewares');
+
+exports.getUser = [
+  verifyToken,
+  ...verifyParamUserId(),
+  (req, res, next) => {
+    const userId = req.params.userId;
+
+    User.findById(userId)
+      .select('-password')
+      .lean()
+      .exec((err, user) => {
+        if (err) {
+          return next(err);
+        }
+
+        if (!user) {
+          res.status(400).json({
+            msg: 'User does not exist',
+          });
+        }
+
+        res.json(user);
+      });
+  },
+];
+
+exports.getUserPosts = [
+  verifyToken,
+  ...verifyParamUserId(),
+  (req, res, next) => {
+    const userId = req.params.userId;
+    Post.find({ user: userId }).exec((err, posts) => {
+      if (err) {
+        return next(err);
+      }
+
+      res.json(posts);
+    });
+  },
+];
 
 exports.getUserFriends = [
   verifyToken,
@@ -119,6 +161,29 @@ function userIdManager(arrField, dbOperation) {
             return res.json({ user: updatedUser });
           }
         );
+      });
+    },
+  ];
+}
+
+function verifyParamUserId() {
+  return [
+    checkIdFormat('userId'),
+    (req, res, next) => {
+      const userId = req.params.userId;
+
+      User.exists({ _id: userId }, (err, result) => {
+        if (err) {
+          return next(err);
+        }
+
+        if (!result) {
+          return res.status(400).json({
+            msg: 'User does not exist',
+          });
+        }
+
+        next();
       });
     },
   ];
